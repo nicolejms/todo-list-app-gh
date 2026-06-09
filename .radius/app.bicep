@@ -6,7 +6,7 @@ param environment string
 @description('The Radius application')
 param application string
 
-// Todo List App - Node.js Express frontend with PostgreSQL backend
+// Todo List App - Node.js Express frontend with Redis cache and PostgreSQL backend
 resource todoApp 'Applications.Core/containers@2023-10-01-preview' = {
   name: 'todo-app'
   properties: {
@@ -32,11 +32,20 @@ resource todoApp 'Applications.Core/containers@2023-10-01-preview' = {
         POSTGRES_DB: {
           value: postgresDb.properties.database
         }
+        REDIS_HOST: {
+          value: redisCache.properties.host
+        }
+        REDIS_PORT: {
+          value: string(redisCache.properties.port)
+        }
       }
     }
     connections: {
       postgres: {
         source: postgresDb.id
+      }
+      redis: {
+        source: redisCache.id
       }
     }
   }
@@ -50,6 +59,16 @@ resource postgresDb 'Applications.Datastores/sqlDatabases@2023-10-01-preview' = 
     database: 'todos'
     server: 'postgres'
     port: 5432
+  }
+}
+
+resource redisCache 'Applications.Datastores/redisCaches@2023-10-01-preview' = {
+  name: 'todo-redis'
+  properties: {
+    application: application
+    environment: environment
+    host: 'redis'
+    port: 6379
   }
 }
 

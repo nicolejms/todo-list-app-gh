@@ -1,6 +1,7 @@
 const waitPort = require('wait-port');
 const fs = require('fs');
 const { Pool } = require('pg');
+const { createClient } = require('redis');
 
 const {
     POSTGRES_HOST: HOST,
@@ -11,9 +12,15 @@ const {
     POSTGRES_PASSWORD_FILE: PASSWORD_FILE,
     POSTGRES_DB: DB,
     POSTGRES_DB_FILE: DB_FILE,
+    REDIS_HOST,
+    REDIS_PORT,
 } = process.env;
 
+const CACHE_TTL = 60; // seconds
+const ITEMS_CACHE_KEY = 'todo:items';
+
 let pool;
+let redis;
 
 async function init() {
     const host = HOST_FILE ? fs.readFileSync(HOST_FILE, 'utf8').trim() : HOST;
@@ -45,14 +52,34 @@ async function init() {
     );
 
     console.log(`Connected to postgres db at host ${host}`);
+
+    // Connect to Redis
+    const redisHost = REDIS_HOST || 'redis';
+    const redisPort = REDIS_PORT || 6379;
+    redis = createClient({ url: `redis://${redisHost}:${redisPort}` });
+    redis.on('error', (err) => console.error('Redis error:', err));
+    await redis.connect();
+    console.log(`Connected to redis at ${redisHost}:${redisPort}`);
 }
 
 async function teardown() {
+    await redis.quit();
     await pool.end();
 }
 
+async function invalidateCache() {
+    await redis.del(ITEMS_CACHE_KEY);
+}
+
 async function getItems() {
+    // Try cache first
+    const cached = await redis.get(ITEMS_CACHE_KEY);
+    if (cached) {
+        return JSON.parse(cached);
+    }
+
     const { rows } = await pool.query('SELECT * FROM todo_items');
+    await redis.setEx(ITEMS_CACHE_KEY, CACHE_TTL, JSON.stringify(rows));
     return rows;
 }
 
@@ -66,6 +93,7 @@ async function storeItem(item) {
         'INSERT INTO todo_items (id, name, completed) VALUES ($1, $2, $3)',
         [item.id, item.name, item.completed],
     );
+    await invalidateCache();
 }
 
 async function updateItem(id, item) {
@@ -73,10 +101,12 @@ async function updateItem(id, item) {
         'UPDATE todo_items SET name=$1, completed=$2 WHERE id=$3',
         [item.name, item.completed, id],
     );
+    await invalidateCache();
 }
 
 async function removeItem(id) {
     await pool.query('DELETE FROM todo_items WHERE id = $1', [id]);
+    await invalidateCache();
 }
 
 module.exports = {
