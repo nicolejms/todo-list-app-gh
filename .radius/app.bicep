@@ -41,7 +41,18 @@ resource webApp 'Applications.Core/containers@2023-10-01-preview' = {
       POSTGRES: {
         source: postgresDb.id
       }
+      BLOB_STORAGE: {
+        source: blobStorage.id
+      }
     }
+  }
+}
+
+resource blobStorage 'Applications.Datastores/blobStorages@2023-10-01-preview' = {
+  name: 'blob-storage'
+  properties: {
+    application: application
+    environment: environment
   }
 }
 
