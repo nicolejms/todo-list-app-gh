@@ -8,18 +8,18 @@ services:
     volumes:
       - ./:/app
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: todos
+      MYSQL_HOST: mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: secret
+      MYSQL_DB: todos
 
-  postgres:
-    image: postgres:16-alpine
+  mysql:
+    image: mysql:8.0
     volumes:
-      - todo-postgres-data:/var/lib/postgresql/data
+      - todo-mysql-data:/var/lib/mysql
     environment:
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: todos
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: todos
 
 volumes:
-  todo-postgres-data:
+  todo-mysql-data:
