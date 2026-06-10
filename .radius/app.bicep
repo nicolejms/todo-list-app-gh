@@ -23,6 +23,9 @@ resource frontend 'Applications.Core/containers@2023-10-01-preview' = {
       database: {
         source: db.id
       }
+      cache: {
+        source: redis.id
+      }
     }
     runtimes: {
       kubernetes: {
@@ -35,6 +38,14 @@ resource frontend 'Applications.Core/containers@2023-10-01-preview' = {
         }
       }
     }
+  }
+}
+
+resource redis 'Applications.Datastores/redisCaches@2023-10-01-preview' = {
+  name: 'redis'
+  properties: {
+    application: application
+    environment: environment
   }
 }
 
