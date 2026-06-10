@@ -6,18 +6,16 @@ param environment string
 @description('The Radius application resource.')
 param application string
 
-resource frontend 'Radius.Compute/containers@2025-08-01-preview' = {
+resource frontend 'Applications.Core/containers@2023-10-01-preview' = {
   name: 'frontend'
   properties: {
     application: application
     environment: environment
-    containers: {
-      frontend: {
-        image: 'ghcr.io/nicolejms/todo-list-app-gh:latest'
-        ports: {
-          web: {
-            containerPort: 3000
-          }
+    container: {
+      image: 'ghcr.io/nicolejms/todo-list-app-gh:latest'
+      ports: {
+        web: {
+          containerPort: 3000
         }
       }
     }
@@ -29,7 +27,7 @@ resource frontend 'Radius.Compute/containers@2025-08-01-preview' = {
   }
 }
 
-resource db 'Radius.Data/sqlDatabases@2025-08-01-preview' = {
+resource db 'Applications.Datastores/sqlDatabases@2023-10-01-preview' = {
   name: 'db'
   properties: {
     application: application
