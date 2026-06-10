@@ -58,6 +58,12 @@ jobs:
           rad credential register azure sp --client-id "${{ secrets.AZURE_CLIENT_ID }}" --client-secret "${{ secrets.RADIUS_CLIENT_SECRET }}" --tenant-id "${{ secrets.AZURE_TENANT_ID }}"
           rad env update "dev" --azure-subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" --azure-resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
 
+      - name: Register Recipes
+        run: |
+          rad recipe register default --resource-type "Applications.Datastores/sqlDatabases" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/sqldatabases:latest" --environment "dev"
+          rad recipe register default --resource-type "Applications.Datastores/redisCaches" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/rediscaches:latest" --environment "dev" || true
+          rad recipe register default --resource-type "Applications.Datastores/mongoDatabases" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/mongodatabases:latest" --environment "dev" || true
+
       - name: Deploy Application
         run: |
           if [ -f ".radius/app.bicep" ]; then
