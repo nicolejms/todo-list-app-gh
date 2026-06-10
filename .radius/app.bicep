@@ -11,11 +11,13 @@ resource frontend 'Radius.Compute/containers@2025-08-01-preview' = {
   properties: {
     application: application
     environment: environment
-    container: {
-      image: 'ghcr.io/nicolejms/todo-list-app-gh:latest'
-      ports: {
-        web: {
-          containerPort: 3000
+    containers: {
+      frontend: {
+        image: 'ghcr.io/nicolejms/todo-list-app-gh:latest'
+        ports: {
+          web: {
+            containerPort: 3000
+          }
         }
       }
     }
