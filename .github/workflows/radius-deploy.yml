@@ -85,7 +85,16 @@ jobs:
 
       - name: Deploy Application
         run: |
-          rad deploy ".radius/app.bicep" --environment "${{ inputs.environment }}"
+          if [ -f ".radius/app.bicep" ]; then
+            rad deploy ".radius/app.bicep" --environment "${{ inputs.environment }}"
+          elif [ -f "app.bicep" ]; then
+            rad deploy "app.bicep" --environment "${{ inputs.environment }}"
+          elif [ -f ".radius/app.bicep" ]; then
+            rad deploy ".radius/app.bicep" --environment "${{ inputs.environment }}"
+          else
+            echo "❌ No app.bicep found in repository"
+            exit 1
+          fi
 
       - name: Show Application Status
         run: |
