@@ -32,14 +32,5 @@ resource db 'Applications.Datastores/sqlDatabases@2023-10-01-preview' = {
   properties: {
     application: application
     environment: environment
-    resourceProvisioning: 'manual'
-    resources: [
-      {
-        id: '/planes/radius/local/resourceGroups/default'
-      }
-    ]
-    database: 'todo'
-    server: 'localhost'
-    port: 3306
   }
 }
