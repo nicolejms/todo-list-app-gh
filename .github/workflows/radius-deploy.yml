@@ -5,7 +5,7 @@ on:
       environment:
         description: 'Radius environment name'
         required: true
-        default: 'dev'
+        default: 'production'
   workflow_run:
     workflows: ["Radius - Verify Credentials"]
     types: [completed]
