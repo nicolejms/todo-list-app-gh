@@ -6,18 +6,20 @@ on:
         description: 'Radius environment name'
         required: true
         default: 'dev'
+  workflow_run:
+    workflows: ["Radius - Verify Credentials"]
+    types: [completed]
 
 permissions:
   id-token: write
-  contents: write
-
-env:
-  RESOURCE_TYPES_CONTRIB_REF: main
+  contents: read
+  packages: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: dev
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,79 +40,35 @@ jobs:
           az aks get-credentials --name "${{ vars.RADIUS_K8S_CLUSTER }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --overwrite-existing
           kubelogin convert-kubeconfig -l azurecli
 
-      - name: Install k3d
-        run: |
-          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
-      - name: Create k3d cluster for Radius control plane
-        run: |
-          k3d cluster create radius-cp --no-lb --wait
-
       - name: Install Radius CLI
         run: |
           wget -q "https://raw.githubusercontent.com/radius-project/radius/main/deploy/install.sh" -O - | /bin/bash
 
-      - name: Install Radius Control Plane on k3d
+      - name: Install Radius Control Plane
         run: |
-          rad install kubernetes --set rp.publicEndpointOverride=localhost
+          rad install kubernetes --set rp.publicEndpointOverride=localhost || echo "Radius already installed"
 
-      - name: Configure external deployment target
+      - name: Setup Radius Environment
         run: |
           rad workspace create kubernetes default
           rad group create default
           rad group switch default
-          rad env create "${{ inputs.environment }}" --namespace "${{ inputs.environment }}"
-          rad env switch "${{ inputs.environment }}"
+          rad env create "dev" --namespace "default" || echo "Environment already exists"
+          rad env switch "dev"
           rad credential register azure wi --client-id "${{ secrets.AZURE_CLIENT_ID }}" --tenant-id "${{ secrets.AZURE_TENANT_ID }}"
-          rad env update "${{ inputs.environment }}" --azure-subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" --azure-resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
-
-      - name: Register resource types and recipes
-        run: |
-          git clone --depth 1 --branch ${{ env.RESOURCE_TYPES_CONTRIB_REF }} https://github.com/radius-project/resource-types-contrib.git /tmp/resource-types-contrib
-          # Register all resource types
-          for type_dir in /tmp/resource-types-contrib/*/; do
-            type_name=$(basename "$type_dir")
-            if [ -f "$type_dir/resourceType.yaml" ]; then
-              rad resource-type register "$type_name" --from-file "$type_dir/resourceType.yaml" 2>/dev/null || true
-            fi
-          done
-          # Register recipes for the target provider
-          for recipe_dir in /tmp/resource-types-contrib/*/recipes/azure/terraform; do
-            if [ -d "$recipe_dir" ]; then
-              type_name=$(echo "$recipe_dir" | sed 's|.*/resource-types-contrib/\([^/]*\)/.*|\1|')
-              rad recipe register default --resource-type "$type_name" --template-kind terraform --template-path "$recipe_dir" 2>/dev/null || true
-            fi
-          done
-          echo "✅ Resource types and recipes registered"
+          rad env update "dev" --azure-subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" --azure-resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
 
       - name: Deploy Application
         run: |
           if [ -f ".radius/app.bicep" ]; then
-            rad deploy ".radius/app.bicep" --environment "${{ inputs.environment }}" --application "${{ inputs.environment }}"
+            rad deploy ".radius/app.bicep" --environment "dev" --application "dev"
           elif [ -f "app.bicep" ]; then
-            rad deploy "app.bicep" --environment "${{ inputs.environment }}" --application "${{ inputs.environment }}"
-          elif [ -f ".radius/app.bicep" ]; then
-            rad deploy ".radius/app.bicep" --environment "${{ inputs.environment }}" --application "${{ inputs.environment }}"
+            rad deploy "app.bicep" --environment "dev" --application "dev"
           else
-            echo "❌ No app.bicep found in repository"
+            echo "No app.bicep found"
             exit 1
           fi
 
       - name: Show Application Status
         run: |
-          APP_NAME=$(rad app list -o json | jq -r '.[0].name // empty')
-          if [ -n "$APP_NAME" ]; then
-            rad app status -a "$APP_NAME"
-            rad resource list -a "$APP_NAME" --output table
-          else
-            echo "No application found after deploy"
-          fi
-
-      - name: Build App Graph
-        run: |
-          APP_NAME=$(rad app list -o json | jq -r '.[0].name // empty')
-          if [ -n "$APP_NAME" ]; then
-            rad app graph -a "$APP_NAME" -o json > /tmp/app-graph.json
-            echo "App graph saved"
-          fi
-        continue-on-error: true
+          rad resource list --output table || true
