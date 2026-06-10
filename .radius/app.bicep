@@ -24,6 +24,17 @@ resource frontend 'Applications.Core/containers@2023-10-01-preview' = {
         source: db.id
       }
     }
+    runtimes: {
+      kubernetes: {
+        pod: {
+          imagePullSecrets: [
+            {
+              name: 'ghcr-pull-secret'
+            }
+          ]
+        }
+      }
+    }
   }
 }
 
