@@ -92,7 +92,9 @@ jobs:
           # but recipes execute against the target cluster. The k3d control plane
           # (and thus terraform state) is ephemeral, so reset the target app
           # namespace each run to keep deploys idempotent and conflict-free.
-          kubectl --kubeconfig "$TARGET_KUBECONFIG" delete namespace "${{ env.RADIUS_ENV }}-${{ env.RADIUS_ENV }}" --ignore-not-found --wait=true
+          for ns in "${{ env.RADIUS_ENV }}-${{ env.RADIUS_ENV }}"; do
+            kubectl --kubeconfig "$TARGET_KUBECONFIG" delete namespace "$ns" --ignore-not-found --wait=true
+          done
           for ns in "${{ env.RADIUS_ENV }}" "${{ env.RADIUS_ENV }}-${{ env.RADIUS_ENV }}"; do
             kubectl --kubeconfig "$TARGET_KUBECONFIG" create namespace "$ns" \
               --dry-run=client -o yaml | kubectl --kubeconfig "$TARGET_KUBECONFIG" apply -f -
@@ -108,6 +110,9 @@ jobs:
             type_name=$(basename "$type_dir")
             yaml="${type_dir}${type_name}.yaml"
             [ -f "$yaml" ] || continue
+            # The database recipe is registered explicitly below (provider-gated,
+            # cloud-managed), so skip it in the generic kubernetes recipe loop.
+            [ "$type_name" = "mySqlDatabases" ] && continue
             ns=$(grep -E '^namespace:' "$yaml" | head -1 | awk '{print $2}')
             [ -z "$ns" ] && continue
             echo "Registering $ns/$type_name"
@@ -128,7 +133,15 @@ jobs:
                 --environment "${{ env.RADIUS_ENV }}" || true
             fi
           done
-          echo "Resource types and recipes registered"
+          # Database: managed Azure MySQL Flexible Server (azure/terraform recipe)
+          rad recipe register default \
+            --resource-type "Radius.Data/mySqlDatabases" \
+            --template-kind terraform \
+            --template-path "git::https://github.com/radius-project/resource-types-contrib.git//Data/mySqlDatabases/recipes/azure/terraform?ref=update-secrets" \
+            --parameters azure_subscription_id="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --parameters resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --environment "${{ env.RADIUS_ENV }}"
+          echo " Resource types and recipes registered"
 
       - name: Reload control plane to pick up new resource types
         run: |
@@ -139,8 +152,9 @@ jobs:
 
       - name: Deploy Application
         run: |
-          DB_PASSWORD=$(openssl rand -hex 16)
-          if [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; elif [ -f "app.bicep" ]; then APP="app.bicep"; else echo "No app.bicep found in repository"; exit 1; fi
+          # Azure MySQL requires 8-128 chars with 3 of: upper, lower, digit, special.
+          DB_PASSWORD="Aa1!$(openssl rand -hex 16)"
+          if [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; elif [ -f "app.bicep" ]; then APP="app.bicep"; elif [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; else echo " No app.bicep found in repository"; exit 1; fi
           rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD"
 
       - name: Show Application Status
@@ -150,5 +164,14 @@ jobs:
             rad app graph -a "$APP_NAME"
           else
             echo "No application found after deploy"
+          fi
+        continue-on-error: true
+
+      - name: Build App Graph
+        run: |
+          APP_NAME=$(rad app list -o json | jq -r '.[0].name // empty')
+          if [ -n "$APP_NAME" ]; then
+            rad app graph -a "$APP_NAME" -o json > /tmp/app-graph.json
+            echo "App graph saved"
           fi
         continue-on-error: true
