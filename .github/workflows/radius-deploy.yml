@@ -156,10 +156,57 @@ jobs:
 
       - name: Deploy Application
         run: |
+          set -uo pipefail
           # Azure MySQL requires 8-128 chars with 3 of: upper, lower, digit, special.
           DB_PASSWORD="Aa1!$(openssl rand -hex 16)"
           if [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; elif [ -f "app.bicep" ]; then APP="app.bicep"; elif [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; else echo "❌ No app.bicep found in repository"; exit 1; fi
-          rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD"
+          echo "Deploying $APP"
+
+          LOG="$RUNNER_TEMP/rad-deploy.log"
+          : > "$LOG"
+
+          # ── Live progress publisher ─────────────────────────────────────────
+          # Publishes the growing rad-deploy log to a throwaway branch
+          # (radius-deploy-status) so the Lattice canvas can poll real per-resource
+          # status in real time. The branch is force-reset on every deploy.
+          STATUS_BRANCH="radius-deploy-status"
+          STATUS_DIR="$RUNNER_TEMP/radius-status"
+          rm -rf "$STATUS_DIR"; mkdir -p "$STATUS_DIR"
+          (
+            cd "$STATUS_DIR"
+            git init -q
+            git checkout -q --orphan "$STATUS_BRANCH"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
+            git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          ) || true
+          publish() {
+            cp "$LOG" "$STATUS_DIR/deploy-progress.log" 2>/dev/null || true
+            printf '%s\n' "$1" > "$STATUS_DIR/deploy-state.txt"
+            (
+              cd "$STATUS_DIR"
+              git add -A >/dev/null 2>&1 || true
+              git commit -q --allow-empty -m "deploy progress: $1" >/dev/null 2>&1 || true
+              git push -q -f origin "$STATUS_BRANCH" >/dev/null 2>&1 || true
+            )
+          }
+
+          # ── Run rad deploy in the background, tee output to the live log ─────
+          rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD" > "$LOG" 2>&1 &
+          RAD_PID=$!
+
+          publish "in_progress"
+          while kill -0 "$RAD_PID" 2>/dev/null; do
+            publish "in_progress"
+            sleep 5
+          done
+          wait "$RAD_PID"; RAD_EXIT=$?
+
+          if [ "$RAD_EXIT" -eq 0 ]; then publish "succeeded"; else publish "failed"; fi
+
+          echo "──────── rad deploy output ────────"
+          cat "$LOG"
+          exit "$RAD_EXIT"
 
       - name: Show Application Status
         run: |
