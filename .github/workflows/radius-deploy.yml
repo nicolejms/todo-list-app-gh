@@ -233,7 +233,9 @@ jobs:
           }
 
           # ── Run rad deploy in the background, tee output to the live log ─────
-          rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD" > "$LOG" 2>&1 &
+          DEPLOY_START=$(date -u +%s)
+          echo "▶ Deployment started at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$LOG"
+          rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD" >> "$LOG" 2>&1 &
           RAD_PID=$!
 
           refresh_activity
@@ -244,9 +246,27 @@ jobs:
             sleep 5
           done
           wait "$RAD_PID"; RAD_EXIT=$?
+          DEPLOY_END=$(date -u +%s)
+          echo "■ Deployment finished at $(date -u +%Y-%m-%dT%H:%M:%SZ) (exit $RAD_EXIT, $((DEPLOY_END - DEPLOY_START))s)" >> "$LOG"
 
           refresh_activity
-          if [ "$RAD_EXIT" -eq 0 ]; then publish "succeeded"; else publish "failed"; fi
+
+          # Capture the deployed application graph and stage it for the status
+          # branch so the canvas can render the REAL deployed graph.
+          if [ "$RAD_EXIT" -eq 0 ]; then
+            APP_NAME=$(rad app list -o json 2>/dev/null | jq -r '.[0].name // empty')
+            if [ -n "$APP_NAME" ]; then
+              rad app graph -a "$APP_NAME" -o json > "$STATUS_DIR/deploy-graph.json" 2>/dev/null || true
+            fi
+          fi
+
+          # Final publish: write the COMPLETE log + deployed graph, THEN the
+          # terminal state marker LAST. Settle and publish twice so the very last
+          # bytes reliably land on the status branch before the job exits.
+          STATE=$([ "$RAD_EXIT" -eq 0 ] && echo "succeeded" || echo "failed")
+          publish "$STATE"
+          sleep 4
+          publish "$STATE"
 
           echo "──────── rad deploy output ────────"
           cat "$LOG"
@@ -263,14 +283,5 @@ jobs:
             rad app graph -a "$APP_NAME"
           else
             echo "No application found after deploy"
-          fi
-        continue-on-error: true
-
-      - name: Build App Graph
-        run: |
-          APP_NAME=$(rad app list -o json | jq -r '.[0].name // empty')
-          if [ -n "$APP_NAME" ]; then
-            rad app graph -a "$APP_NAME" -o json > /tmp/app-graph.json
-            echo "App graph saved"
           fi
         continue-on-error: true
