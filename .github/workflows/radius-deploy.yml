@@ -40,6 +40,9 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --admin --overwrite-existing --file /tmp/target-kubeconfig
           echo "TARGET_KUBECONFIG=/tmp/target-kubeconfig" >> "$GITHUB_ENV"
+          # Provision cloud data services in the same region as the target cluster.
+          TARGET_REGION=$(az aks show --name "${{ vars.RADIUS_K8S_CLUSTER }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --query location -o tsv)
+          echo "TARGET_REGION=$TARGET_REGION" >> "$GITHUB_ENV"
 
       - name: Install k3d
         run: |
@@ -140,7 +143,7 @@ jobs:
             --template-path "git::https://github.com/radius-project/resource-types-contrib.git//Data/mySqlDatabases/recipes/azure/terraform?ref=${{ env.RESOURCE_TYPES_CONTRIB_REF }}" \
             --parameters azure_subscription_id="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --parameters resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --parameters location="${{ vars.AZURE_DB_LOCATION || 'centralus' }}" \
+            --parameters location="$TARGET_REGION" \
             --environment "${{ env.RADIUS_ENV }}"
           echo " Resource types and recipes registered"
 
