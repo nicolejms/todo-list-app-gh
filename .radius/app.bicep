@@ -3,19 +3,50 @@ extension radius
 @description('The Radius environment ID. Injected by Radius.')
 param environment string
 
-@description('The Radius application resource.')
+@description('The Radius application resource. Injected by Radius.')
 param application string
 
-resource frontend 'Applications.Core/containers@2023-10-01-preview' = {
+@description('Database password. Pass via: rad deploy -p dbPassword=$(openssl rand -hex 16)')
+@secure()
+param dbPassword string
+
+resource dbCredentials 'Radius.Security/secrets@2025-08-01-preview' = {
+  name: 'db-creds'
+  properties: {
+    application: application
+    environment: environment
+    data: {
+      USERNAME: {
+        value: 'postgres'
+      }
+      PASSWORD: {
+        value: dbPassword
+      }
+    }
+  }
+}
+
+resource db 'Radius.Data/postgreSqlDatabases@2025-08-01-preview' = {
+  name: 'db'
+  properties: {
+    application: application
+    environment: environment
+    secretName: dbCredentials.name
+  }
+}
+
+resource frontend 'Radius.Compute/containers@2025-08-01-preview' = {
   name: 'frontend'
   properties: {
     application: application
     environment: environment
-    container: {
-      image: 'ghcr.io/nicolejms/todo-list-app-gh:latest'
-      ports: {
-        web: {
-          containerPort: 3000
+    containers: {
+      frontend: {
+        image: 'ghcr.io/nicolejms/todo-list-app-gh:latest'
+        ports: {
+          web: {
+            containerPort: 3000
+          }
         }
       }
     }
@@ -23,36 +54,6 @@ resource frontend 'Applications.Core/containers@2023-10-01-preview' = {
       database: {
         source: db.id
       }
-      cache: {
-        source: redis.id
-      }
     }
-    runtimes: {
-      kubernetes: {
-        pod: {
-          imagePullSecrets: [
-            {
-              name: 'ghcr-pull-secret'
-            }
-          ]
-        }
-      }
-    }
-  }
-}
-
-resource redis 'Applications.Datastores/redisCaches@2023-10-01-preview' = {
-  name: 'redis'
-  properties: {
-    application: application
-    environment: environment
-  }
-}
-
-resource db 'Applications.Datastores/sqlDatabases@2023-10-01-preview' = {
-  name: 'db'
-  properties: {
-    application: application
-    environment: environment
   }
 }
