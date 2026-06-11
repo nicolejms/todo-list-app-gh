@@ -16,6 +16,7 @@ permissions:
 
 env:
   RESOURCE_TYPES_CONTRIB_REF: main
+  RADIUS_ENV: ${{ inputs.environment || 'production' }}
 
 jobs:
   deploy:
@@ -63,10 +64,10 @@ jobs:
           rad workspace create kubernetes default
           rad group create default
           rad group switch default
-          rad env create "${{ inputs.environment }}" --namespace "${{ inputs.environment }}"
-          rad env switch "${{ inputs.environment }}"
+          rad env create "${{ env.RADIUS_ENV }}" --namespace "${{ env.RADIUS_ENV }}"
+          rad env switch "${{ env.RADIUS_ENV }}"
           rad credential register azure sp --client-id "${{ secrets.AZURE_CLIENT_ID }}" --client-secret "${{ secrets.RADIUS_CLIENT_SECRET }}" --tenant-id "${{ secrets.AZURE_TENANT_ID }}"
-          rad env update "${{ inputs.environment }}" --azure-subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" --azure-resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
+          rad env update "${{ env.RADIUS_ENV }}" --azure-subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" --azure-resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
 
       - name: Register resource types and recipes
         run: |
@@ -90,11 +91,11 @@ jobs:
       - name: Deploy Application
         run: |
           if [ -f ".radius/app.bicep" ]; then
-            rad deploy ".radius/app.bicep" --environment "${{ inputs.environment }}" --application "${{ inputs.environment }}"
+            rad deploy ".radius/app.bicep" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}"
           elif [ -f "app.bicep" ]; then
-            rad deploy "app.bicep" --environment "${{ inputs.environment }}" --application "${{ inputs.environment }}"
+            rad deploy "app.bicep" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}"
           elif [ -f ".radius/app.bicep" ]; then
-            rad deploy ".radius/app.bicep" --environment "${{ inputs.environment }}" --application "${{ inputs.environment }}"
+            rad deploy ".radius/app.bicep" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}"
           else
             echo "❌ No app.bicep found in repository"
             exit 1
