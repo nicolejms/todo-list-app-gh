@@ -140,6 +140,7 @@ jobs:
             --template-path "git::https://github.com/radius-project/resource-types-contrib.git//Data/mySqlDatabases/recipes/azure/terraform?ref=${{ env.RESOURCE_TYPES_CONTRIB_REF }}" \
             --parameters azure_subscription_id="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --parameters resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --parameters location="${{ vars.AZURE_DB_LOCATION || 'centralus' }}" \
             --environment "${{ env.RADIUS_ENV }}"
           echo " Resource types and recipes registered"
 
