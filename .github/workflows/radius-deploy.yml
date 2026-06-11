@@ -5,7 +5,7 @@ on:
       environment:
         description: 'Radius environment name'
         required: true
-        default: 'production'
+        default: 'dev'
   workflow_run:
     workflows: ["Radius - Verify Credentials"]
     types: [completed]
@@ -16,12 +16,12 @@ permissions:
 
 env:
   RESOURCE_TYPES_CONTRIB_REF: update-secrets
-  RADIUS_ENV: ${{ inputs.environment || 'production' }}
+  RADIUS_ENV: ${{ inputs.environment || 'dev' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'production' }}
+    environment: ${{ inputs.environment || 'dev' }}
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
