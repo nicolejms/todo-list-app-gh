@@ -120,6 +120,13 @@ jobs:
           done
           echo "Resource types and recipes registered"
 
+      - name: Reload control plane to pick up new resource types
+        run: |
+          # Newly-created (non-default) resource types are not recognised by the
+          # deployment engine / UCP until their pods refresh their provider cache.
+          kubectl rollout restart deployment -n radius-system
+          kubectl rollout status deployment -n radius-system --timeout=240s
+
       - name: Deploy Application
         run: |
           DB_PASSWORD=$(openssl rand -hex 16)
