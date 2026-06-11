@@ -1,0 +1,1 @@
+[pod/contour-contour-b7b6569-9qldm/contour] time="2026-06-11T23:27:57Z" level=info msg="successfully acquired lease radius-system/radius-system-contour-contour" caller="leaderelection.go:271" context=kubernetes
