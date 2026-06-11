@@ -71,6 +71,12 @@ jobs:
 
       - name: Register resource types and recipes
         run: |
+          # Register local-dev recipes for built-in Radius types
+          rad recipe register default --resource-type "Applications.Datastores/sqlDatabases" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/sqldatabases:latest" --environment "${{ env.RADIUS_ENV }}" 2>/dev/null || true
+          rad recipe register default --resource-type "Applications.Datastores/redisCaches" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/rediscaches:latest" --environment "${{ env.RADIUS_ENV }}" 2>/dev/null || true
+          rad recipe register default --resource-type "Applications.Datastores/mongoDatabases" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/mongodatabases:latest" --environment "${{ env.RADIUS_ENV }}" 2>/dev/null || true
+          rad recipe register default --resource-type "Applications.Messaging/rabbitMQQueues" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/rabbitmqqueues:latest" --environment "${{ env.RADIUS_ENV }}" 2>/dev/null || true
+          # Register extensibility resource types and recipes
           git clone --depth 1 --branch ${{ env.RESOURCE_TYPES_CONTRIB_REF }} https://github.com/radius-project/resource-types-contrib.git /tmp/resource-types-contrib
           # Register all resource types
           for type_dir in /tmp/resource-types-contrib/*/; do
