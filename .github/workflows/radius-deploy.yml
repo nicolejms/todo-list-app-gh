@@ -47,7 +47,15 @@ jobs:
 
       - name: Create k3d cluster for Radius control plane
         run: |
-          k3d cluster create radius-cp --no-lb --wait
+          for attempt in 1 2 3; do
+            if k3d cluster create radius-cp --no-lb --wait; then
+              break
+            fi
+            echo "k3d cluster creation attempt $attempt failed; retrying..."
+            k3d cluster delete radius-cp || true
+            sleep 10
+          done
+          k3d cluster list | grep -q radius-cp
 
       - name: Install Radius CLI
         run: |
