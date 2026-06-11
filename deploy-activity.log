@@ -2,3 +2,5 @@ Started|/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourceGroups/gh-de
 Started|/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourceGroups/gh-demo-prod/providers/Microsoft.DBforMySQL/flexibleServers/mysql-efa1c0053e0de7|'auditIfNotExists' Policy action.
 Accepted|/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourceGroups/gh-demo-prod/providers/Microsoft.DBforMySQL/flexibleServers/mysql-efa1c0053e0de7|Create/Update MySQL Server
 Running|/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourcegroups/gh-demo-prod/providers/Microsoft.DBforMySQL/flexibleServers/mysql-efa1c0053e0de7|List/Get MySQL Servers
+Started|/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourceGroups/gh-demo-prod/providers/Microsoft.DBforMySQL/flexibleServers/mysql-efa1c0053e0de7/firewallRules/AllowAzureServices|Create/Update Firewall Rule
+Accepted|/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourceGroups/gh-demo-prod/providers/Microsoft.DBforMySQL/flexibleServers/mysql-efa1c0053e0de7/firewallRules/AllowAzureServices|Create/Update Firewall Rule
