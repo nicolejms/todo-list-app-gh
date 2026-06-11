@@ -5,7 +5,7 @@ on:
       environment:
         description: 'Radius environment name'
         required: true
-        default: 'test-wus2'
+        default: 'production'
   workflow_run:
     workflows: ["Radius - Verify Credentials"]
     types: [completed]
@@ -15,13 +15,13 @@ permissions:
   contents: write
 
 env:
-  RESOURCE_TYPES_CONTRIB_REF: main
-  RADIUS_ENV: ${{ inputs.environment || 'test-wus2' }}
+  RESOURCE_TYPES_CONTRIB_REF: update-secrets
+  RADIUS_ENV: ${{ inputs.environment || 'production' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'test-wus2' }}
+    environment: ${{ inputs.environment || 'production' }}
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +40,9 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --admin --overwrite-existing --file /tmp/target-kubeconfig
           echo "TARGET_KUBECONFIG=/tmp/target-kubeconfig" >> "$GITHUB_ENV"
+          # Provision cloud data services in the same region as the target cluster.
+          TARGET_REGION=$(az aks show --name "${{ vars.RADIUS_K8S_CLUSTER }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --query location -o tsv)
+          echo "TARGET_REGION=$TARGET_REGION" >> "$GITHUB_ENV"
 
       - name: Install k3d
         run: |
@@ -73,7 +76,7 @@ jobs:
           kubectl create secret generic radius-target-kubeconfig \
             -n radius-system --from-file=kubeconfig="$TARGET_KUBECONFIG"
           CN=$(kubectl get deployment dynamic-rp -n radius-system -o jsonpath='{.spec.template.spec.containers[0].name}')
-          kubectl patch deployment dynamic-rp -n radius-system --type strategic -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"$CN\",\"env\":[{\"name\":\"KUBECONFIG\",\"value\":\"/var/run/target/kubeconfig\"},{\"name\":\"KUBE_CONFIG_PATH\",\"value\":\"/var/run/target/kubeconfig\"}],\"volumeMounts\":[{\"name\":\"target-kubeconfig\",\"mountPath\":\"/var/run/target\",\"readOnly\":true}]}],\"volumes\":[{\"name\":\"target-kubeconfig\",\"secret\":{\"secretName\":\"radius-target-kubeconfig\"}}]}}}}"
+          kubectl patch deployment dynamic-rp -n radius-system --type strategic -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"$CN\",\"env\":[{\"name\":\"KUBECONFIG\",\"value\":\"/var/run/target/kubeconfig\"},{\"name\":\"KUBE_CONFIG_PATH\",\"value\":\"/var/run/target/kubeconfig\"},{\"name\":\"ARM_CLIENT_ID\",\"value\":\"${{ secrets.AZURE_CLIENT_ID }}\"},{\"name\":\"ARM_TENANT_ID\",\"value\":\"${{ secrets.AZURE_TENANT_ID }}\"},{\"name\":\"ARM_SUBSCRIPTION_ID\",\"value\":\"${{ secrets.AZURE_SUBSCRIPTION_ID }}\"},{\"name\":\"ARM_USE_OIDC\",\"value\":\"true\"},{\"name\":\"ARM_OIDC_REQUEST_URL\",\"value\":\"$ACTIONS_ID_TOKEN_REQUEST_URL\"},{\"name\":\"ARM_OIDC_REQUEST_TOKEN\",\"value\":\"$ACTIONS_ID_TOKEN_REQUEST_TOKEN\"}],\"volumeMounts\":[{\"name\":\"target-kubeconfig\",\"mountPath\":\"/var/run/target\",\"readOnly\":true}]}],\"volumes\":[{\"name\":\"target-kubeconfig\",\"secret\":{\"secretName\":\"radius-target-kubeconfig\"}}]}}}}"
           kubectl rollout status deployment/dynamic-rp -n radius-system --timeout=180s
 
       - name: Configure external deployment target
@@ -137,11 +140,12 @@ jobs:
           rad recipe register default \
             --resource-type "Radius.Data/mySqlDatabases" \
             --template-kind terraform \
-            --template-path "git::https://github.com/radius-project/resource-types-contrib.git//Data/mySqlDatabases/recipes/azure/terraform?ref=update-secrets" \
+            --template-path "git::https://github.com/radius-project/resource-types-contrib.git//Data/mySqlDatabases/recipes/azure/terraform?ref=${{ env.RESOURCE_TYPES_CONTRIB_REF }}" \
             --parameters azure_subscription_id="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --parameters resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --parameters location="$TARGET_REGION" \
             --environment "${{ env.RADIUS_ENV }}"
-          echo "✅ Resource types and recipes registered"
+          echo " Resource types and recipes registered"
 
       - name: Reload control plane to pick up new resource types
         run: |
@@ -154,7 +158,7 @@ jobs:
         run: |
           # Azure MySQL requires 8-128 chars with 3 of: upper, lower, digit, special.
           DB_PASSWORD="Aa1!$(openssl rand -hex 16)"
-          if [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; elif [ -f "app.bicep" ]; then APP="app.bicep"; elif [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; else echo "❌ No app.bicep found in repository"; exit 1; fi
+          if [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; elif [ -f "app.bicep" ]; then APP="app.bicep"; elif [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; else echo " No app.bicep found in repository"; exit 1; fi
           rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD"
 
       - name: Show Application Status
