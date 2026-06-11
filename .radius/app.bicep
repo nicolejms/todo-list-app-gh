@@ -6,7 +6,7 @@ param environment string
 @description('The Radius application resource. Injected by Radius.')
 param application string
 
-@description('Database password. Pass via: rad deploy -p dbPassword=$(openssl rand -hex 16)')
+@description('Database admin password. Pass via: rad deploy -p dbPassword=...')
 @secure()
 param dbPassword string
 
@@ -17,7 +17,7 @@ resource dbCredentials 'Radius.Security/secrets@2025-08-01-preview' = {
     environment: environment
     data: {
       USERNAME: {
-        value: 'postgres'
+        value: 'mysqladmin'
       }
       PASSWORD: {
         value: dbPassword
@@ -26,7 +26,7 @@ resource dbCredentials 'Radius.Security/secrets@2025-08-01-preview' = {
   }
 }
 
-resource db 'Radius.Data/postgreSqlDatabases@2025-08-01-preview' = {
+resource db 'Radius.Data/mySqlDatabases@2025-08-01-preview' = {
   name: 'db'
   properties: {
     application: application
