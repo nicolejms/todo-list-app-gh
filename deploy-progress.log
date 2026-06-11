@@ -5,3 +5,11 @@ Deploying template '.radius/app.bicep' for application 'dev' and environment '/p
 
 Deployment In Progress... 
 
+
+Deployment Complete
+
+Resources:
+    frontend        Radius.Compute/containers
+    db              Radius.Data/mySqlDatabases
+    db-creds        Radius.Security/secrets
+■ Deployment finished at 2026-06-11T23:33:11Z (exit 0, 316s)

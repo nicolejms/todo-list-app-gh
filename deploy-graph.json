@@ -1,0 +1,76 @@
+{
+  "resources": [
+    {
+      "connections": [
+        {
+          "direction": "Inbound",
+          "id": "/planes/radius/local/resourcegroups/default/providers/Radius.Compute/containers/frontend"
+        }
+      ],
+      "id": "/planes/radius/local/resourcegroups/default/providers/Radius.Data/mySqlDatabases/db",
+      "name": "db",
+      "outputResources": [
+        {
+          "id": "/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourceGroups/gh-demo-prod/providers/Microsoft.DBforMySQL/flexibleServers/mysql-efa1c0053e0de7",
+          "name": "mysql-efa1c0053e0de7",
+          "type": "Microsoft.DBforMySQL/flexibleServers"
+        },
+        {
+          "id": "/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourceGroups/gh-demo-prod/providers/Microsoft.DBforMySQL/flexibleServers/mysql-efa1c0053e0de7/databases/mysql_db",
+          "name": "mysql_db",
+          "type": "Microsoft.DBforMySQL/flexibleServers/databases"
+        },
+        {
+          "id": "/subscriptions/83d22c15-134b-4a0a-b10d-0a63710f9ab3/resourceGroups/gh-demo-prod/providers/Microsoft.DBforMySQL/flexibleServers/mysql-efa1c0053e0de7/firewallRules/AllowAzureServices",
+          "name": "AllowAzureServices",
+          "type": "Microsoft.DBforMySQL/flexibleServers/firewallRules"
+        },
+        {
+          "id": "/planes/kubernetes/local/namespaces/dev-dev/providers/core/Secret/db-creds",
+          "name": "db-creds",
+          "type": "core/Secret"
+        }
+      ],
+      "provisioningState": "Succeeded",
+      "type": "Radius.Data/mySqlDatabases"
+    },
+    {
+      "connections": [],
+      "id": "/planes/radius/local/resourcegroups/default/providers/Radius.Security/secrets/db-creds",
+      "name": "db-creds",
+      "outputResources": [
+        {
+          "id": "/planes/kubernetes/local/namespaces/dev-dev/providers/core/Secret/db-creds",
+          "name": "db-creds",
+          "type": "core/Secret"
+        }
+      ],
+      "provisioningState": "Succeeded",
+      "type": "Radius.Security/secrets"
+    },
+    {
+      "connections": [
+        {
+          "direction": "Outbound",
+          "id": "/planes/radius/local/resourcegroups/default/providers/Radius.Data/mySqlDatabases/db"
+        }
+      ],
+      "id": "/planes/radius/local/resourcegroups/default/providers/Radius.Compute/containers/frontend",
+      "name": "frontend",
+      "outputResources": [
+        {
+          "id": "/planes/kubernetes/local/namespaces/dev-dev/providers/apps/Deployment/frontend",
+          "name": "frontend",
+          "type": "apps/Deployment"
+        },
+        {
+          "id": "/planes/kubernetes/local/namespaces/dev-dev/providers/core/Service/frontend-frontend",
+          "name": "frontend-frontend",
+          "type": "core/Service"
+        }
+      ],
+      "provisioningState": "Succeeded",
+      "type": "Radius.Compute/containers"
+    }
+  ]
+}
