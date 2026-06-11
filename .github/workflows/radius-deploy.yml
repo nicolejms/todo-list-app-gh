@@ -5,7 +5,7 @@ on:
       environment:
         description: 'Radius environment name'
         required: true
-        default: 'production'
+        default: 'test-wus2'
   workflow_run:
     workflows: ["Radius - Verify Credentials"]
     types: [completed]
@@ -16,12 +16,12 @@ permissions:
 
 env:
   RESOURCE_TYPES_CONTRIB_REF: update-secrets
-  RADIUS_ENV: ${{ inputs.environment || 'production' }}
+  RADIUS_ENV: ${{ inputs.environment || 'test-wus2' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'production' }}
+    environment: ${{ inputs.environment || 'test-wus2' }}
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
@@ -145,7 +145,7 @@ jobs:
             --parameters resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
             --parameters location="$TARGET_REGION" \
             --environment "${{ env.RADIUS_ENV }}"
-          echo " Resource types and recipes registered"
+          echo "✅ Resource types and recipes registered"
 
       - name: Reload control plane to pick up new resource types
         run: |
@@ -158,7 +158,7 @@ jobs:
         run: |
           # Azure MySQL requires 8-128 chars with 3 of: upper, lower, digit, special.
           DB_PASSWORD="Aa1!$(openssl rand -hex 16)"
-          if [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; elif [ -f "app.bicep" ]; then APP="app.bicep"; elif [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; else echo " No app.bicep found in repository"; exit 1; fi
+          if [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; elif [ -f "app.bicep" ]; then APP="app.bicep"; elif [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; else echo "❌ No app.bicep found in repository"; exit 1; fi
           rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD"
 
       - name: Show Application Status
