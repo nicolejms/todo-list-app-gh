@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 env:
-  RESOURCE_TYPES_CONTRIB_REF: main
+  RESOURCE_TYPES_CONTRIB_REF: update-secrets
   RADIUS_ENV: ${{ inputs.environment || 'production' }}
 
 jobs:
@@ -137,7 +137,7 @@ jobs:
           rad recipe register default \
             --resource-type "Radius.Data/mySqlDatabases" \
             --template-kind terraform \
-            --template-path "git::https://github.com/radius-project/resource-types-contrib.git//Data/mySqlDatabases/recipes/azure/terraform?ref=update-secrets" \
+            --template-path "git::https://github.com/radius-project/resource-types-contrib.git//Data/mySqlDatabases/recipes/azure/terraform?ref=${{ env.RESOURCE_TYPES_CONTRIB_REF }}" \
             --parameters azure_subscription_id="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --parameters resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
             --environment "${{ env.RADIUS_ENV }}"
