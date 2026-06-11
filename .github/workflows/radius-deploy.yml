@@ -86,8 +86,6 @@ jobs:
           rad group switch default
           rad env create "${{ env.RADIUS_ENV }}" --namespace "${{ env.RADIUS_ENV }}"
           rad env switch "${{ env.RADIUS_ENV }}"
-          rad credential register azure sp --client-id "${{ secrets.AZURE_CLIENT_ID }}" --client-secret "${{ secrets.RADIUS_CLIENT_SECRET }}" --tenant-id "${{ secrets.AZURE_TENANT_ID }}"
-          rad env update "${{ env.RADIUS_ENV }}" --azure-subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" --azure-resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
 
       - name: Reset application namespace on target cluster
         run: |
