@@ -91,7 +91,7 @@ jobs:
             ns=$(grep -E '^namespace:' "$yaml" | head -1 | awk '{print $2}')
             [ -z "$ns" ] && continue
             echo "Registering $ns/$type_name"
-            rad resource-type register "$type_name" --from-file "$yaml" || true
+            rad resource-type create -f "$yaml" || true
             rel=${type_dir#/tmp/rtc/}
             rel=${rel%/}
             if [ -d "${type_dir}recipes/kubernetes/terraform" ]; then
