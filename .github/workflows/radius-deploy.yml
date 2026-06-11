@@ -78,11 +78,13 @@ jobs:
           rad credential register azure sp --client-id "${{ secrets.AZURE_CLIENT_ID }}" --client-secret "${{ secrets.RADIUS_CLIENT_SECRET }}" --tenant-id "${{ secrets.AZURE_TENANT_ID }}"
           rad env update "${{ env.RADIUS_ENV }}" --azure-subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" --azure-resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
 
-      - name: Ensure application namespace on target cluster
+      - name: Reset application namespace on target cluster
         run: |
           # Radius creates the app namespace on the (k3d) control-plane cluster,
-          # but recipes execute against the target cluster. Pre-create the app
-          # namespace there so recipe resources have somewhere to land.
+          # but recipes execute against the target cluster. The k3d control plane
+          # (and thus terraform state) is ephemeral, so reset the target app
+          # namespace each run to keep deploys idempotent and conflict-free.
+          kubectl --kubeconfig "$TARGET_KUBECONFIG" delete namespace "${{ env.RADIUS_ENV }}-${{ env.RADIUS_ENV }}" --ignore-not-found --wait=true
           for ns in "${{ env.RADIUS_ENV }}" "${{ env.RADIUS_ENV }}-${{ env.RADIUS_ENV }}"; do
             kubectl --kubeconfig "$TARGET_KUBECONFIG" create namespace "$ns" \
               --dry-run=client -o yaml | kubectl --kubeconfig "$TARGET_KUBECONFIG" apply -f -
