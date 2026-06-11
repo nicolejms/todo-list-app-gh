@@ -33,25 +33,42 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Set up kubelogin
-        uses: azure/use-kubelogin@v1
-        with:
-          kubelogin-version: 'v0.1.4'
-
-      - name: Get AKS Credentials
+      - name: Capture target AKS kubeconfig (static admin credentials)
         run: |
-          az aks get-credentials --name "${{ vars.RADIUS_K8S_CLUSTER }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --overwrite-existing
-          kubelogin convert-kubeconfig -l azurecli
+          az aks get-credentials \
+            --name "${{ vars.RADIUS_K8S_CLUSTER }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --admin --overwrite-existing --file /tmp/target-kubeconfig
+          echo "TARGET_KUBECONFIG=/tmp/target-kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Install k3d
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+
+      - name: Create k3d cluster for Radius control plane
+        run: |
+          k3d cluster create radius-cp --no-lb --wait
 
       - name: Install Radius CLI
         run: |
           wget -q "https://raw.githubusercontent.com/radius-project/radius/main/deploy/install.sh" -O - | /bin/bash
 
-      - name: Install Radius on target cluster
+      - name: Install Radius Control Plane on k3d
         run: |
-          rad install kubernetes
+          rad install kubernetes --set rp.publicEndpointOverride=localhost
 
-      - name: Configure Radius environment
+      - name: Point recipe execution at target cluster
+        run: |
+          # Mount the static target-cluster kubeconfig into dynamic-rp so that
+          # recipe-provisioned resources (containers, databases) land on the
+          # TARGET cluster instead of the ephemeral k3d control-plane cluster.
+          kubectl create secret generic radius-target-kubeconfig \
+            -n radius-system --from-file=kubeconfig="$TARGET_KUBECONFIG"
+          CN=$(kubectl get deployment dynamic-rp -n radius-system -o jsonpath='{.spec.template.spec.containers[0].name}')
+          kubectl patch deployment dynamic-rp -n radius-system --type strategic -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"$CN\",\"env\":[{\"name\":\"KUBECONFIG\",\"value\":\"/var/run/target/kubeconfig\"},{\"name\":\"KUBE_CONFIG_PATH\",\"value\":\"/var/run/target/kubeconfig\"}],\"volumeMounts\":[{\"name\":\"target-kubeconfig\",\"mountPath\":\"/var/run/target\",\"readOnly\":true}]}],\"volumes\":[{\"name\":\"target-kubeconfig\",\"secret\":{\"secretName\":\"radius-target-kubeconfig\"}}]}}}}"
+          kubectl rollout status deployment/dynamic-rp -n radius-system --timeout=180s
+
+      - name: Configure external deployment target
         run: |
           rad workspace create kubernetes default
           rad group create default
@@ -63,48 +80,48 @@ jobs:
 
       - name: Register resource types and recipes
         run: |
-          # Register local-dev recipes for built-in Radius types
-          rad recipe register default --resource-type "Applications.Datastores/sqlDatabases" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/sqldatabases:latest" --environment "${{ env.RADIUS_ENV }}" 2>/dev/null || true
-          rad recipe register default --resource-type "Applications.Datastores/redisCaches" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/rediscaches:latest" --environment "${{ env.RADIUS_ENV }}" 2>/dev/null || true
-          rad recipe register default --resource-type "Applications.Datastores/mongoDatabases" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/mongodatabases:latest" --environment "${{ env.RADIUS_ENV }}" 2>/dev/null || true
-          rad recipe register default --resource-type "Applications.Messaging/rabbitMQQueues" --template-kind "bicep" --template-path "ghcr.io/radius-project/recipes/local-dev/rabbitmqqueues:latest" --environment "${{ env.RADIUS_ENV }}" 2>/dev/null || true
-          # Register extensibility resource types and recipes
-          git clone --depth 1 --branch ${{ env.RESOURCE_TYPES_CONTRIB_REF }} https://github.com/radius-project/resource-types-contrib.git /tmp/resource-types-contrib
-          for type_dir in /tmp/resource-types-contrib/*/; do
+          git clone --depth 1 --branch ${{ env.RESOURCE_TYPES_CONTRIB_REF }} https://github.com/radius-project/resource-types-contrib.git /tmp/rtc
+          REF="${{ env.RESOURCE_TYPES_CONTRIB_REF }}"
+          # resource-types-contrib layout: <Category>/<typeName>/<typeName>.yaml
+          # with recipes under <Category>/<typeName>/recipes/kubernetes/{terraform,bicep}
+          for type_dir in /tmp/rtc/*/*/; do
             type_name=$(basename "$type_dir")
-            if [ -f "$type_dir/resourceType.yaml" ]; then
-              rad resource-type register "$type_name" --from-file "$type_dir/resourceType.yaml" 2>/dev/null || true
+            yaml="${type_dir}${type_name}.yaml"
+            [ -f "$yaml" ] || continue
+            ns=$(grep -E '^namespace:' "$yaml" | head -1 | awk '{print $2}')
+            [ -z "$ns" ] && continue
+            echo "Registering $ns/$type_name"
+            rad resource-type register "$type_name" --from-file "$yaml" || true
+            rel=${type_dir#/tmp/rtc/}
+            rel=${rel%/}
+            if [ -d "${type_dir}recipes/kubernetes/terraform" ]; then
+              rad recipe register default \
+                --resource-type "$ns/$type_name" \
+                --template-kind terraform \
+                --template-path "git::https://github.com/radius-project/resource-types-contrib.git//${rel}/recipes/kubernetes/terraform?ref=${REF}" \
+                --environment "${{ env.RADIUS_ENV }}" || true
+            elif [ -d "${type_dir}recipes/kubernetes/bicep" ]; then
+              rad recipe register default \
+                --resource-type "$ns/$type_name" \
+                --template-kind bicep \
+                --template-path "${type_dir}recipes/kubernetes/bicep" \
+                --environment "${{ env.RADIUS_ENV }}" || true
             fi
           done
           echo "Resource types and recipes registered"
 
       - name: Deploy Application
         run: |
-          if [ -f ".radius/app.bicep" ]; then
-            rad deploy ".radius/app.bicep" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}"
-          elif [ -f "app.bicep" ]; then
-            rad deploy "app.bicep" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}"
-          else
-            echo "No app.bicep found in repository"
-            exit 1
-          fi
+          DB_PASSWORD=$(openssl rand -hex 16)
+          if [ -f ".radius/app.bicep" ]; then APP=".radius/app.bicep"; elif [ -f "app.bicep" ]; then APP="app.bicep"; else echo "No app.bicep found in repository"; exit 1; fi
+          rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD"
 
       - name: Show Application Status
         run: |
           APP_NAME=$(rad app list -o json | jq -r '.[0].name // empty')
           if [ -n "$APP_NAME" ]; then
-            rad app status -a "$APP_NAME"
-            rad app graph -a "$APP_NAME" 2>/dev/null || true
+            rad app graph -a "$APP_NAME"
           else
             echo "No application found after deploy"
-          fi
-        continue-on-error: true
-
-      - name: Build App Graph
-        run: |
-          APP_NAME=$(rad app list -o json | jq -r '.[0].name // empty')
-          if [ -n "$APP_NAME" ]; then
-            rad app graph -a "$APP_NAME" -o json > /tmp/app-graph.json
-            echo "App graph saved"
           fi
         continue-on-error: true
