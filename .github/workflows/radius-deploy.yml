@@ -43,11 +43,7 @@ jobs:
           az aks get-credentials --name "${{ vars.RADIUS_K8S_CLUSTER }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --overwrite-existing
           kubelogin convert-kubeconfig -l azurecli
 
-      - name: Install k3d
-        run: |
-          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
-      - name: Create k3d cluster for Radius control plane
+- name: Create k3d cluster for Radius control plane
         run: |
           k3d cluster create radius-cp --no-lb --wait
 
@@ -55,11 +51,11 @@ jobs:
         run: |
           wget -q "https://raw.githubusercontent.com/radius-project/radius/main/deploy/install.sh" -O - | /bin/bash
 
-      - name: Install Radius Control Plane on k3d
+      - name: Install Radius on target cluster
         run: |
           rad install kubernetes --set rp.publicEndpointOverride=localhost
 
-      - name: Configure external deployment target
+      - name: Configure Radius environment
         run: |
           rad workspace create kubernetes default
           rad group create default
