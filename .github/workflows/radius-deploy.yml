@@ -165,10 +165,49 @@ jobs:
           LOG="$RUNNER_TEMP/rad-deploy.log"
           : > "$LOG"
 
+          # ── Radius control-plane log tail ───────────────────────────────────
+          # The Radius control plane runs on the in-runner k3d cluster. Recipe
+          # execution (terraform/bicep) and deployment-engine orchestration emit
+          # real-time logs from the radius-system pods — a lower-latency, more
+          # detailed source than the Azure activity log (and the authoritative
+          # place the exact terraform/recipe failure cause is printed).
+          CP_LOG="$RUNNER_TEMP/deploy-controlplane.log"
+          : > "$CP_LOG"
+          CP_CTX="k3d-radius-cp"
+          start_cp_tail() {
+            kubectl config get-contexts "$CP_CTX" >/dev/null 2>&1 || CP_CTX="$(kubectl config current-context 2>/dev/null)"
+            for d in $(kubectl --context "$CP_CTX" -n radius-system get deploy -o name 2>/dev/null); do
+              ( kubectl --context "$CP_CTX" -n radius-system logs "$d" \
+                  --all-containers=true -f --since=10s --prefix=true 2>/dev/null \
+                | stdbuf -oL grep -iE 'recipe|terraform|tofu|deploymentengine|deployment engine|provision|creating|creation complete|succeeded|completed|processing|updating|destroy|apply|error|fail|azurerm_|aws_|/providers/|radius.|applications.' \
+                >> "$CP_LOG" ) &
+            done
+          }
+          start_cp_tail || true
+
+          # ── Azure activity-log poller ───────────────────────────────────────
+          # Captures fine-grained per-resource provisioning status from the
+          # target resource group's activity log so the Lattice canvas can color
+          # each planned graph node (yellow→green/red) as Azure creates it.
+          ACTIVITY_LOG="$RUNNER_TEMP/deploy-activity.log"
+          : > "$ACTIVITY_LOG"
+          ACT_RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          ACT_START=$(date -u -d '-2 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+          refresh_activity() {
+            [ -z "$ACT_RG" ] && return 0
+            az monitor activity-log list \
+              --resource-group "$ACT_RG" \
+              --start-time "$ACT_START" \
+              --query "[?resourceId!=null].{status:status.value, rid:resourceId, op:operationName.localizedValue, t:eventTimestamp}" \
+              -o json 2>/dev/null > "$RUNNER_TEMP/activity-raw.json" || return 0
+            jq -r 'sort_by(.t) | .[] | "\(.status)|\(.rid)|\(.op)"' "$RUNNER_TEMP/activity-raw.json" 2>/dev/null > "$ACTIVITY_LOG" || true
+          }
+
           # ── Live progress publisher ─────────────────────────────────────────
-          # Publishes the growing rad-deploy log to a throwaway branch
-          # (radius-deploy-status) so the Lattice canvas can poll real per-resource
-          # status in real time. The branch is force-reset on every deploy.
+          # Publishes the growing rad-deploy log AND the activity log to a
+          # throwaway branch (radius-deploy-status) so the Lattice canvas can poll
+          # real per-resource status in real time. The branch is force-reset on
+          # every deploy.
           STATUS_BRANCH="radius-deploy-status"
           STATUS_DIR="$RUNNER_TEMP/radius-status"
           rm -rf "$STATUS_DIR"; mkdir -p "$STATUS_DIR"
@@ -182,6 +221,8 @@ jobs:
           ) || true
           publish() {
             cp "$LOG" "$STATUS_DIR/deploy-progress.log" 2>/dev/null || true
+            cp "$ACTIVITY_LOG" "$STATUS_DIR/deploy-activity.log" 2>/dev/null || true
+            cp "$CP_LOG" "$STATUS_DIR/deploy-controlplane.log" 2>/dev/null || true
             printf '%s\n' "$1" > "$STATUS_DIR/deploy-state.txt"
             (
               cd "$STATUS_DIR"
@@ -195,17 +236,24 @@ jobs:
           rad deploy "$APP" --environment "${{ env.RADIUS_ENV }}" --application "${{ env.RADIUS_ENV }}" -p dbPassword="$DB_PASSWORD" > "$LOG" 2>&1 &
           RAD_PID=$!
 
+          refresh_activity
           publish "in_progress"
           while kill -0 "$RAD_PID" 2>/dev/null; do
+            refresh_activity
             publish "in_progress"
             sleep 5
           done
           wait "$RAD_PID"; RAD_EXIT=$?
 
+          refresh_activity
           if [ "$RAD_EXIT" -eq 0 ]; then publish "succeeded"; else publish "failed"; fi
 
           echo "──────── rad deploy output ────────"
           cat "$LOG"
+          if [ "$RAD_EXIT" -ne 0 ] && [ -s "$CP_LOG" ]; then
+            echo "──────── radius control-plane / recipe log ────────"
+            cat "$CP_LOG"
+          fi
           exit "$RAD_EXIT"
 
       - name: Show Application Status
